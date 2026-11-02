@@ -5,6 +5,7 @@ let
   core = import (coreSrc + "/nix") {
     inherit pkgs;
     namespace = "opkg-impurifier";
+    sourceInfo = coreSrc;
   };
   architecture =
     if pkgs.stdenv.hostPlatform.isx86_64 then
@@ -142,9 +143,9 @@ let
       inherit (payload) version description configPaths;
       inherit payload release architecture;
       dependencies = [
-        "opkg-impurifier (>= 0.1.0)"
+        "opkg-impurifier (>= ${core.runtimeVersion})"
       ]
-      ++ lib.optionals payload.hostEnabled hostDependencies;
+      ++ lib.optionals (payload.hostEnabled || (args.hostDependencies or null) != null) hostDependencies;
       scripts = { inherit postinst postrm; };
     };
   makeRuntimeIpk =
@@ -162,7 +163,7 @@ let
     in
     buildIpk {
       name = "opkg-impurifier";
-      version = "0.1.0";
+      version = core.runtimeVersion;
       inherit payload;
       description = "Native package intent projected into a Nix profile";
       license = "MIT";
@@ -174,7 +175,12 @@ let
     };
 in
 {
-  inherit (core) engine offlineCache unit;
+  inherit (core)
+    engine
+    offlineCache
+    unit
+    runtimeVersion
+    ;
   inherit buildIpk makeIpk makeRuntimeIpk;
   runtimeIpk = makeRuntimeIpk { };
   makeNetIpk = args: makeIpk (args // { offline = false; });

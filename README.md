@@ -75,3 +75,5 @@ administrator service intent, removal, cooperating driver upgrades and GC.
 It uses NixOS with mutable native-style unit directories, not an OpenWrt or
 complete OpenEmbedded boot. OpenWrt's opkg fork remains separate compatibility
 coverage rather than an assumed equivalent of the tested upstream version.
+
+The exported `runtimeVersion` follows the pinned core source timestamp. Application dependencies require that runtime version or newer, rather than accepting every engine as `0.1.0`. This supports ordinary native engine upgrades without project release tags. Consumer-provided Nix dependency expressions remain independent of the engine's own native version.

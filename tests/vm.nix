@@ -92,6 +92,7 @@ let
       '';
     };
   hardware = impurifier.makeOfflineIpk {
+    hostDependencies = [ "impurifier-host-driver" ];
     pkg = hardwareFixture.tool;
     inherit (hardwareFixture) hardware;
   };
@@ -191,11 +192,14 @@ pkgs.testers.runNixOSTest {
         machine.succeed(opkg + "remove ipk-service")
         machine.fail("systemctl is-active --quiet ipk-service.service")
     with subtest("cooperating native drivers request snapshot refresh"):
+        code, output = machine.execute(install + "/tmp/packages/hardware.ipk 2>&1")
+        assert code != 0 and "impurifier-host-driver" in output, output
         machine.succeed(install + "/tmp/packages/driver1.ipk /tmp/packages/hardware.ipk")
         machine.succeed("/opt/nix/profile/bin/hardware-tool | grep '^1$'")
         machine.succeed(install + "/tmp/packages/driver2.ipk")
         machine.succeed("/opt/nix/profile/bin/hardware-tool | grep '^2$'")
-        machine.succeed(opkg + "remove hardware-tool impurifier-host-driver")
+        machine.succeed(opkg + "remove hardware-tool")
+        machine.succeed(opkg + "remove impurifier-host-driver")
     with subtest("offline-root maintainer scripts cannot activate the host"):
         before = machine.succeed("readlink /opt/nix/profile").strip()
         code, output = machine.execute(opkg + "--offline-root /tmp/foreign-root --force-postinstall --force-depends install /tmp/packages/offline1.ipk 2>&1")
