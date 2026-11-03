@@ -2,7 +2,10 @@
 
 Emit native IPK packages that project Nix application closures into a shared,
 GC-rooted `/opt/nix/profile`. IPK/opkg is a separate contract from Alpine APK.
-Original emitter/runtime code is MIT licensed.
+Original emitter/runtime code is MIT licensed. IPKs use the original gzip/tar
+envelope, accepted by both upstream opkg and OpenWrt's fork. OpenWrt's extractor
+does not support the Debian `ar` envelope and can otherwise report successful
+installation without extracting the payload or maintainer scripts.
 
 ```nix
 let impurifier = inputs.opkg-impurifier.lib.opkg-impurifier { inherit pkgs; };
@@ -29,6 +32,23 @@ and disable remote builders during import. Neither changes global cache trust.
 native runtime requirements consumer policy. The runtime requires working Nix
 and Python; the impure Nix provider/installer remains deferred, not excluded.
 The runtime archive contains the engine's MIT license notice.
+
+`makeRuntimeIpk` also accepts `stateDir` (default
+`"/var/lib/opkg-impurifier"`). On OpenWrt, `/var` normally points into volatile
+`/tmp`, so use persistent storage, for example
+`stateDir = "/opt/nix/state/opkg-impurifier";`. State, profile generations and
+indirect GC roots must survive reboots together. This is explicit runtime
+policy; the emitter does not replace OpenWrt's `/var` layout.
+
+`makeRepository { packages = [ runtime app.offline ]; }` emits `Packages`,
+`Packages.gz`, exact SHA256 package hashes and canonical native filenames. It
+rejects collisions. Copy it to a writable publication directory and run its
+`sign-repository REPOSITORY PRIVATE-KEY` helper with native `usign` on PATH.
+Private keys stay outside the Nix store. Install the publisher's public key
+through your normal trusted channel with `opkg-key add`, then add a native
+`src/gz` feed. Signing authenticates the uncompressed index; opkg checks each
+package against its signed index hash. Select distinct releases or channels
+for net/offline repository transport changes.
 
 `configFiles`, `files`, `users`, `directories`, `systemd`, `openrc`, `lifecycle`,
 and `hardware` use the shared core API. Configurations belong to native opkg
@@ -73,7 +93,16 @@ network-disabled VM checks fetch failure, offline reinstall, edited conffiles,
 upgrades, native install batching, lifecycle hooks, account/directory ownership,
 administrator service intent, removal, cooperating driver upgrades and GC.
 It uses NixOS with mutable native-style unit directories, not an OpenWrt or
-complete OpenEmbedded boot. OpenWrt's opkg fork remains separate compatibility
-coverage rather than an assumed equivalent of the tested upstream version.
+complete OpenEmbedded boot. A separate VM runs the unmodified opkg fork, usign, opkg-key and native database
+from the official OpenWrt 24.10.4 x86_64 root filesystem. It checks native signed
+feed verification, rejection and deletion of manipulated indexes, signed-index
+SHA256 package corruption rejection, real provider dependencies, net
+failure/offline recovery, conffiles/upgrades, ordinary-user launch and removal/GC.
+The fixture selects persistent state under `/opt/nix` and shares real Nix state
+and roots with its NixOS host. This covers application commands; procd service
+integration, complete OpenWrt boot, router hardware and other architectures are
+separate coverage. Native opkg update can exit zero after rejecting a feed's
+signature; inspect verification diagnostics and list state, not exit status
+alone.
 
 The exported `runtimeVersion` follows the pinned core source timestamp. Application dependencies require that runtime version or newer, rather than accepting every engine as `0.1.0`. This supports ordinary native engine upgrades without project release tags. Consumer-provided Nix dependency expressions remain independent of the engine's own native version.

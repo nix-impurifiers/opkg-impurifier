@@ -15,6 +15,7 @@ let
   };
 in
 {
+  openwrt-vm = import ./openwrt-vm.nix { inherit pkgs impurifier; };
   unit = impurifier.unit;
   emitter =
     pkgs.runCommand "opkg-impurifier-contract"
@@ -25,11 +26,11 @@ in
         ];
       }
       ''
-        ar p ${net} debian-binary | grep '^2.0$'
-        ar p ${net} control.tar.gz | tar xzOf - ./control | grep '^Package: hello$'
-        ar p ${
+        tar xzOf ${net} debian-binary | grep '^2.0$'
+        tar xzOf ${net} control.tar.gz | tar xzOf - control | grep '^Package: hello$'
+        tar xzOf ${
           impurifier.makeRuntimeIpk { nixDependency = "custom-nix-provider"; }
-        } control.tar.gz | tar xzOf - ./control | grep '^Depends: custom-nix-provider, python3$'
+        } control.tar.gz | tar xzOf - control | grep '^Depends: custom-nix-provider, python3$'
         test "$(wc -l < ${closure}/store-paths)" = 2
         touch $out
       '';

@@ -102,9 +102,13 @@ let
           '') scripts
         )}
         printf '2.0\n' > debian-binary
-        tar -C control --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf control.tar.gz .
+        # Keep control entries as simple basenames for portable script extraction.
+        find control -mindepth 1 -maxdepth 1 -printf '%P\0' | sort -z > control-files
+        tar -C control --null --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf control.tar.gz -T control-files
         tar -C root --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf data.tar.gz .
-        ar crD "$out" debian-binary control.tar.gz data.tar.gz
+        # OpenWrt opkg only reads the original gzip/tar IPK envelope.
+        # Upstream opkg supports this format too.
+        tar --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf "$out" debian-binary control.tar.gz data.tar.gz
       '';
   queue = pkgs.writeText "opkg-impurifier-activate" ''
     #!/bin/sh
@@ -161,12 +165,21 @@ let
     {
       nixDependency ? "nix",
       pythonDependency ? "python3",
+      stateDir ? "/var/lib/opkg-impurifier",
     }:
+    assert lib.assertMsg (
+      lib.hasPrefix "/" stateDir
+      && stateDir != "/"
+      && builtins.match "[A-Za-z0-9/_.+-]+" stateDir != null
+      && lib.all (part: part != "." && part != "..") (lib.splitString "/" stateDir)
+    ) "invalid native runtime state directory";
     let
       payload = pkgs.runCommand "opkg-impurifier-runtime-payload" { } ''
         mkdir -p $out
         cp -r ${core.makeRuntimeTree { }}/. $out/
         chmod -R u+w $out
+        substituteInPlace $out/usr/sbin/nix-profile-engine \
+          --replace-fail '--namespace opkg-impurifier' '--namespace opkg-impurifier --state ${stateDir}'
         install -m755 ${queue} $out/usr/sbin/opkg-impurifier-activate
       '';
     in
@@ -182,6 +195,28 @@ let
       ];
       scripts = { inherit postinst; };
     };
+  makeRepository =
+    {
+      packages,
+      name ? "impurifier-ipk-repository",
+    }:
+    assert lib.assertMsg (packages != [ ]) "IPK repository requires packages";
+    pkgs.runCommand name
+      {
+        nativeBuildInputs = [
+          pkgs.python3
+          pkgs.binutils
+          pkgs.gzip
+        ];
+        __structuredAttrs = true;
+        unsafeDiscardReferences.out = true;
+      }
+      ''
+        python3 ${./repository.py} "$out" ${lib.escapeShellArgs (map toString packages)}
+        gzip -n -c $out/Packages > $out/Packages.gz
+        cp ${./sign-repository.sh} $out/sign-repository
+        chmod +x $out/sign-repository
+      '';
 in
 {
   inherit (core)
@@ -190,7 +225,12 @@ in
     unit
     runtimeVersion
     ;
-  inherit buildIpk makeIpk makeRuntimeIpk;
+  inherit
+    buildIpk
+    makeIpk
+    makeRuntimeIpk
+    makeRepository
+    ;
   runtimeIpk = makeRuntimeIpk { };
   makeNetIpk = args: makeIpk (args // { offline = false; });
   makeOfflineIpk = args: makeIpk (args // { offline = true; });
