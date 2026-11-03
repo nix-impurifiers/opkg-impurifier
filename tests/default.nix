@@ -15,6 +15,7 @@ let
   };
 in
 {
+  native-vm = import ./native-vm.nix { inherit pkgs impurifier coreSrc; };
   openwrt-vm = import ./openwrt-vm.nix { inherit pkgs impurifier; };
   unit = impurifier.unit;
   emitter =

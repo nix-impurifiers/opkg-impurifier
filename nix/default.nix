@@ -110,6 +110,18 @@ let
         # Upstream opkg supports this format too.
         tar --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf "$out" debian-binary control.tar.gz data.tar.gz
       '';
+  makeNativePackages =
+    args:
+    let
+      trees = core.makeNativeTrees args;
+    in
+    pkgs.runCommand "native-owned-ipk-collection"
+      {
+        nativeBuildInputs = [ pkgs.python3 ];
+      }
+      ''
+        python3 ${./native-ipks.py} ${trees} "$out" ${architecture}
+      '';
   queue = pkgs.writeText "opkg-impurifier-activate" ''
     #!/bin/sh
     set -eu
@@ -163,7 +175,9 @@ let
     };
   makeRuntimeIpk =
     {
-      nixDependency ? "nix",
+      bundledNixStore ? null,
+      bundledNixNotices ? [ ],
+      nixDependency ? (if bundledNixStore == null then "nix" else null),
       pythonDependency ? "python3",
       stateDir ? "/var/lib/opkg-impurifier",
     }:
@@ -176,7 +190,7 @@ let
     let
       payload = pkgs.runCommand "opkg-impurifier-runtime-payload" { } ''
         mkdir -p $out
-        cp -r ${core.makeRuntimeTree { }}/. $out/
+        cp -r ${core.makeRuntimeTree { inherit bundledNixStore bundledNixNotices; }}/. $out/
         chmod -R u+w $out
         substituteInPlace $out/usr/sbin/nix-profile-engine \
           --replace-fail '--namespace opkg-impurifier' '--namespace opkg-impurifier --state ${stateDir}'
@@ -187,12 +201,10 @@ let
       name = "opkg-impurifier";
       version = core.runtimeVersion;
       inherit payload;
+      architecture = if bundledNixStore == null then "all" else architecture;
       description = "Native package intent projected into a Nix profile";
       license = "MIT";
-      dependencies = [
-        nixDependency
-        pythonDependency
-      ];
+      dependencies = lib.optional (nixDependency != null) nixDependency ++ [ pythonDependency ];
       scripts = { inherit postinst; };
     };
   makeRepository =
@@ -227,6 +239,7 @@ in
     ;
   inherit
     buildIpk
+    makeNativePackages
     makeIpk
     makeRuntimeIpk
     makeRepository

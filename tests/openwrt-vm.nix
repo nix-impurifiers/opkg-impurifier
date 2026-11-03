@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: MIT
-{ pkgs, impurifier }:
+{
+  pkgs,
+  impurifier,
+  bundled ? false,
+}:
 let
   runtime = impurifier.makeRuntimeIpk { stateDir = "/opt/nix/state/opkg-impurifier"; };
   rootfs = pkgs.fetchurl {
@@ -36,7 +40,15 @@ let
     ];
     payload = pkgs.runCommand "wrt-runtime-provider" { } ''
       mkdir -p $out/usr/bin
-      ln -s ${pkgs.nix}/bin/nix-store $out/usr/bin/nix-store
+      ${
+        if bundled then
+          ''
+            printf '#!/bin/sh\nexit 1\n' > $out/usr/bin/nix-store
+            chmod 755 $out/usr/bin/nix-store
+          ''
+        else
+          "ln -s ${pkgs.nix}/bin/nix-store $out/usr/bin/nix-store"
+      }
       ln -s ${pkgs.python3}/bin/python3 $out/usr/bin/python3
     '';
   };

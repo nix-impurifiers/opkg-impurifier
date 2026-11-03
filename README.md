@@ -106,3 +106,35 @@ signature; inspect verification diagnostics and list state, not exit status
 alone.
 
 The exported `runtimeVersion` follows the pinned core source timestamp. Application dependencies require that runtime version or newer, rather than accepting every engine as `0.1.0`. This supports ordinary native engine upgrades without project release tags. Consumer-provided Nix dependency expressions remain independent of the engine's own native version.
+
+### Native payloads and optional private clients
+
+`makeNativePackages { pkg; name ? pkg.pname; version ? pkg.version; ... }` emits a
+collection of native-owned IPKs at the original store paths, with exact native
+reference dependencies and installed-file checksums. `programs` defaults to the
+main command (`[]` emits no command links), and `binDir` defaults to `/usr/bin`.
+No target Nix executable, daemon or database is needed. Native ownership must
+remain separate from a Nix-managed store's garbage collection. This does not
+relocate binaries. The existing `buildIpk { payload; name; version; ... }` also
+accepts producer-prepared native layouts without implicit impurifier hooks.
+
+Native opkg removal policy is explicit. `--autoremove` applies to upgrades and
+removal, but its internal solver can leave deeper orphan dependencies. The VM
+sweeps native `nix-store-*` packages through ordinary, dependency-protected opkg
+removals, without forcing required objects away. Its directory-symlink removal
+pass can also leave empty parent directories; the fixture confirms no installed
+packages remain before removing only those empty directories. It never deletes
+remaining files to make cleanup pass. Native `verify` can report an alteration
+while returning success, so verification checks its diagnostic output too.
+
+Feeds carry SHA256sum plus MD5sum compatibility metadata for upstream builds that
+disable SHA-256 support. Native checksum checks remain enabled. The signed
+OpenWrt suites still verify signatures and reject altered SHA-256 metadata and
+artifacts.
+
+`makeRuntimeIpk` accepts optional `bundledNixStore` and `bundledNixNotices`.
+The client must be a supplied static ELF executable with upstream notices.
+Bundling omits the default external Nix dependency, retains Python, and selects
+the actual target architecture. Compatible external clients take precedence;
+failed operations are not retried through another client or store. This is a
+client bundle, not a Nix installer. Custom `stateDir` behavior is preserved.

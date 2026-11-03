@@ -29,5 +29,7 @@ for artifact in map(Path, sys.argv[2:]):
     shutil.copyfile(artifact, output / filename)
     with artifact.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    records.append(f"{control}\nFilename: {filename}\nSize: {artifact.stat().st_size}\nSHA256sum: {digest}\n")
+    with artifact.open("rb") as stream:
+        legacy_digest = hashlib.file_digest(stream, "md5").hexdigest()
+    records.append(f"{control}\nFilename: {filename}\nSize: {artifact.stat().st_size}\nSHA256sum: {digest}\nMD5sum: {legacy_digest}\n")
 (output / "Packages").write_text("\n".join(sorted(records)))
